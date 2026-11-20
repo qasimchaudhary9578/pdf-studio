@@ -100,7 +100,7 @@ async def send_client_file(
 @app.post("/api/compress-pdf")
 async def compress_pdf(
     chat_id: str = Form(...),
-    quality: int = Form(60),  # 30 (High compression) to 80 (Low compression)
+    quality: int = Form(60),
     file: UploadFile = File(...),
 ):
     temp_dir = tempfile.mkdtemp()
@@ -113,18 +113,41 @@ async def compress_pdf(
             shutil.copyfileobj(file.file, f)
 
         doc = fitz.open(in_path)
-        doc.rewrite_images(dpi_threshold=150, dpi_target=100, quality=quality, lossy=True)
+        if doc.is_encrypted:
+            doc.close()
+            raise HTTPException(status_code=400, detail="Yeh PDF password-protected hai. Pehle ise Unlock karein.")
+
+        target_dpi = 72 if quality <= 45 else (96 if quality <= 70 else 120)
+
+        try:
+            doc.rewrite_images(
+                dpi_threshold=target_dpi,
+                dpi_target=target_dpi,
+                quality=quality,
+                lossy=True,
+            )
+        except Exception:
+            pass
+
         doc.save(out_path, garbage=4, deflate=True, clean=True)
         doc.close()
 
         orig_kb = round(os.path.getsize(in_path) / 1024, 1)
         new_kb = round(os.path.getsize(out_path) / 1024, 1)
-        caption = f"✅ Compressed PDF\nSize: {orig_kb} KB ➡️ {new_kb} KB"
 
-        await send_document_to_telegram(chat_id, out_path, out_name, caption)
-        return {"status": "success", "message": f"Compressed ({orig_kb}KB → {new_kb}KB) & sent to Telegram!"}
+        final_path = out_path if new_kb < orig_kb else in_path
+        final_kb = min(orig_kb, new_kb)
+
+        caption = f"✅ Compressed PDF\nSize: {orig_kb} KB ➡️ {final_kb} KB"
+        await send_document_to_telegram(chat_id, final_path, out_name, caption)
+        return {"status": "success", "message": f"Compressed ({orig_kb}KB → {final_kb}KB) & sent to Telegram!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Compression error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+        
 
 
 # 4. Lock PDF (Password Lagana)
