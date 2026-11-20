@@ -117,23 +117,38 @@ async def compress_pdf(
             doc.close()
             raise HTTPException(status_code=400, detail="Yeh PDF password-protected hai. Pehle ise Unlock karein.")
 
-        target_dpi = 72 if quality <= 45 else (96 if quality <= 70 else 120)
+        orig_kb = round(os.path.getsize(in_path) / 1024, 1)
+        q = max(15, min(quality, 90))
+        target_dpi = 85 if q <= 35 else (115 if q <= 65 else 145)
 
+        # Level 1: Direct image & font optimization
         try:
             doc.rewrite_images(
-                dpi_threshold=target_dpi,
+                dpi_threshold=72,
                 dpi_target=target_dpi,
-                quality=quality,
+                quality=q,
                 lossy=True,
             )
+            doc.subset_fonts()
         except Exception:
             pass
 
         doc.save(out_path, garbage=4, deflate=True, clean=True)
-        doc.close()
-
-        orig_kb = round(os.path.getsize(in_path) / 1024, 1)
         new_kb = round(os.path.getsize(out_path) / 1024, 1)
+
+        # Level 2: Agar size kam na ho (vector/certificate PDFs), toh pages ko compressed JPEG PDF mein badlein
+        if new_kb >= orig_kb * 0.85:
+            new_doc = fitz.open()
+            for page in doc:
+                pix = page.get_pixmap(dpi=target_dpi, alpha=False)
+                img_bytes = pix.tobytes("jpeg", jpg_quality=q)
+                new_page = new_doc.new_page(width=page.rect.width, height=page.rect.height)
+                new_page.insert_image(new_page.rect, stream=img_bytes)
+            new_doc.save(out_path, garbage=4, deflate=True)
+            new_doc.close()
+            new_kb = round(os.path.getsize(out_path) / 1024, 1)
+
+        doc.close()
 
         final_path = out_path if new_kb < orig_kb else in_path
         final_kb = min(orig_kb, new_kb)
@@ -147,6 +162,7 @@ async def compress_pdf(
         raise HTTPException(status_code=500, detail=f"Compression error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
+        
         
 
 
