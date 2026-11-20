@@ -1,6 +1,6 @@
 import os
-import uuid
 import shutil
+import asyncio
 import tempfile
 import httpx
 import fitz  # PyMuPDF
@@ -8,10 +8,10 @@ import pdfplumber
 from openpyxl import Workbook
 from pypdf import PdfReader, PdfWriter
 from pdf2docx import Converter
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
-# Environment Variables (Deploy karte waqt set karein)
+# Environment Variables
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-frontend.vercel.app")
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
@@ -19,6 +19,16 @@ CHANNEL_URL = "https://t.me/yourunknownhelper"
 CHANNEL_USERNAME = "@yourunknownhelper"
 
 app = FastAPI(title="PDF Studio Hybrid Backend")
+
+# Server Crash Protection (Max 2 heavy PDFs at once, 10MB max limit)
+HEAVY_TASK_LOCK = asyncio.Semaphore(2)
+MAX_FILE_SIZE = 10 * 1024 * 1024
+
+
+async def limit_heavy_tasks():
+    async with HEAVY_TASK_LOCK:
+        yield
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -35,7 +45,6 @@ async def send_document_to_telegram(chat_id: str, file_path: str, filename: str,
         with open(file_path, "rb") as f:
             files = {"document": (filename, f)}
             data = {"chat_id": chat_id, "caption": f"{caption}\n\n📢 Powered by {CHANNEL_USERNAME}"}
-            
             resp = await client.post(url, data=data, files=files)
             if resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Telegram delivery failed: {resp.text}")
@@ -72,7 +81,7 @@ async def telegram_webhook(request: Request):
             "reply_markup": {
                 "inline_keyboard": [
                     [{"text": "🚀 Open PDF Studio", "web_app": {"url": MINI_APP_URL}}],
-                    [{"text": "📢 Join Official Channel", "url": CHANNEL_URL}]
+                    [{"text": "📢 Join Official Channel", "url": CHANNEL_URL}],
                 ]
             },
         }
@@ -82,7 +91,7 @@ async def telegram_webhook(request: Request):
     return {"ok": True}
 
 
-# 2. Frontend se bani files ko Telegram chat mein forward karne ke liye
+# 2. Client-side processed file ko Telegram par bhejne ke liye
 @app.post("/api/send-client-file")
 async def send_client_file(
     chat_id: str = Form(...),
@@ -101,12 +110,15 @@ async def send_client_file(
 
 
 # 3. PDF Compressor
-@app.post("/api/compress-pdf")
+@app.post("/api/compress-pdf", dependencies=[Depends(limit_heavy_tasks)])
 async def compress_pdf(
     chat_id: str = Form(...),
     quality: int = Form(60),
     file: UploadFile = File(...),
 ):
+    if file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Free version mein max 10MB tak ki PDF allow hai.")
+
     temp_dir = tempfile.mkdtemp()
     try:
         in_path = os.path.join(temp_dir, "input.pdf")
@@ -140,7 +152,7 @@ async def compress_pdf(
         doc.save(out_path, garbage=4, deflate=True, clean=True)
         new_kb = round(os.path.getsize(out_path) / 1024, 1)
 
-        # Level 2: Agar size kam na ho (vector/certificate PDFs), toh pages ko compressed JPEG PDF mein badlein
+        # Level 2: Vector/certificate PDFs ke liye page optimization
         if new_kb >= orig_kb * 0.85:
             new_doc = fitz.open()
             for page in doc:
@@ -166,8 +178,6 @@ async def compress_pdf(
         raise HTTPException(status_code=500, detail=f"Compression error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-        
-        
 
 
 # 4. Lock PDF (Password Lagana)
@@ -187,6 +197,9 @@ async def lock_pdf(
             shutil.copyfileobj(file.file, f)
 
         reader = PdfReader(in_path)
+        if reader.is_encrypted:
+            raise HTTPException(status_code=400, detail="Yeh PDF pehle se password-protected hai.")
+
         writer = PdfWriter()
         for page in reader.pages:
             writer.add_page(page)
@@ -196,7 +209,11 @@ async def lock_pdf(
             writer.write(f)
 
         await send_document_to_telegram(chat_id, out_path, out_name, "🔒 Password Protected PDF")
-        return {"status": "success", "message": "PDF locked & sent to Telegram!"}
+        return {"status": "success", "message": "Password protected PDF sent to your Telegram chat!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lock error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -219,9 +236,9 @@ async def unlock_pdf(
 
         reader = PdfReader(in_path)
         if reader.is_encrypted:
-            result = reader.decrypt(password)
-            if result == 0:
-                raise HTTPException(status_code=400, detail="Galat password! Kripya sahi password dalein.")
+            res = reader.decrypt(password)
+            if res == 0:
+                raise HTTPException(status_code=400, detail="Galat password! Sahi password dalein.")
 
         writer = PdfWriter()
         for page in reader.pages:
@@ -231,17 +248,24 @@ async def unlock_pdf(
             writer.write(f)
 
         await send_document_to_telegram(chat_id, out_path, out_name, "🔓 Unlocked PDF")
-        return {"status": "success", "message": "PDF unlocked & sent to Telegram!"}
+        return {"status": "success", "message": "Unlocked PDF sent to your Telegram chat!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Unlock error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 # 6. PDF to Word (.docx)
-@app.post("/api/pdf-to-word")
+@app.post("/api/pdf-to-word", dependencies=[Depends(limit_heavy_tasks)])
 async def pdf_to_word(
     chat_id: str = Form(...),
     file: UploadFile = File(...),
 ):
+    if file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Free version mein max 10MB tak ki PDF allow hai.")
+
     temp_dir = tempfile.mkdtemp()
     try:
         in_path = os.path.join(temp_dir, "input.pdf")
@@ -258,16 +282,23 @@ async def pdf_to_word(
 
         await send_document_to_telegram(chat_id, out_path, out_name, "📝 Converted to Word (.docx)")
         return {"status": "success", "message": "Word file sent to your Telegram chat!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Word conversion error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 # 7. PDF to Excel (.xlsx)
-@app.post("/api/pdf-to-excel")
+@app.post("/api/pdf-to-excel", dependencies=[Depends(limit_heavy_tasks)])
 async def pdf_to_excel(
     chat_id: str = Form(...),
     file: UploadFile = File(...),
 ):
+    if file.size and file.size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="Free version mein max 10MB tak ki PDF allow hai.")
+
     temp_dir = tempfile.mkdtemp()
     try:
         in_path = os.path.join(temp_dir, "input.pdf")
@@ -284,15 +315,14 @@ async def pdf_to_excel(
         has_data = False
 
         with pdfplumber.open(in_path) as pdf:
-            for page_num, page in enumerate(pdf.pages, start=1):
+            for page in pdf.pages:
                 tables = page.extract_tables()
                 for table in tables:
                     for row in table:
                         ws.append([cell if cell is not None else "" for cell in row])
                         has_data = True
-                    ws.append([])  # Table ke baad blank row
+                    ws.append([])
 
-                # Agar page par table nahi mili toh text lines extract karein
                 if not tables:
                     text = page.extract_text()
                     if text:
@@ -306,6 +336,10 @@ async def pdf_to_excel(
         wb.save(out_path)
         await send_document_to_telegram(chat_id, out_path, out_name, "📊 Converted to Excel (.xlsx)")
         return {"status": "success", "message": "Excel file sent to your Telegram chat!"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Excel conversion error: {str(e)}")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
-  
+                                
