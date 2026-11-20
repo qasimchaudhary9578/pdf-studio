@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_TELEGRAM_BOT_TOKEN")
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://your-frontend.vercel.app")
 TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+CHANNEL_URL = "https://t.me/yourunknownhelper"
+CHANNEL_USERNAME = "@yourunknownhelper"
 
 app = FastAPI(title="PDF Studio Hybrid Backend")
 
@@ -32,7 +34,8 @@ async def send_document_to_telegram(chat_id: str, file_path: str, filename: str,
     async with httpx.AsyncClient(timeout=60.0) as client:
         with open(file_path, "rb") as f:
             files = {"document": (filename, f)}
-            data = {"chat_id": chat_id, "caption": caption}
+            data = {"chat_id": chat_id, "caption": f"{caption}\n\n📢 Powered by {CHANNEL_USERNAME}"}
+            
             resp = await client.post(url, data=data, files=files)
             if resp.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Telegram delivery failed: {resp.text}")
@@ -68,7 +71,8 @@ async def telegram_webhook(request: Request):
             "parse_mode": "Markdown",
             "reply_markup": {
                 "inline_keyboard": [
-                    [{"text": "🚀 Open PDF Studio", "web_app": {"url": MINI_APP_URL}}]
+                    [{"text": "🚀 Open PDF Studio", "web_app": {"url": MINI_APP_URL}}],
+                    [{"text": "📢 Join Official Channel", "url": CHANNEL_URL}]
                 ]
             },
         }
