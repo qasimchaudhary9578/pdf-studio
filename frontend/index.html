@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>PDF & Image Studio</title>
+  <!-- Telegram Mini App SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!-- Client-side PDF & Image Libraries -->
+  <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #0f172a);
+      --card: var(--tg-theme-secondary-bg-color, #1e293b);
+      --text: var(--tg-theme-text-color, #f8fafc);
+      --hint: var(--tg-theme-hint-color, #94a3b8);
+      --btn: var(--tg-theme-button-color, #3b82f6);
+      --btn-text: var(--tg-theme-button-text-color, #ffffff);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background: var(--bg); color: var(--text); padding: 16px; padding-bottom: 40px; }
+    .header { text-align: center; margin-bottom: 18px; }
+    .header h1 { font-size: 20px; font-weight: 700; }
+    .header p { font-size: 13px; color: var(--hint); margin-top: 4px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .tool-card {
+      background: var(--card); border-radius: 14px; padding: 16px 12px;
+      text-align: center; cursor: pointer; border: 1px solid rgba(255,255,255,0.06);
+      transition: transform 0.12s ease;
+    }
+    .tool-card:active { transform: scale(0.96); }
+    .tool-icon { font-size: 28px; margin-bottom: 8px; }
+    .tool-title { font-size: 14px; font-weight: 600; }
+    .tool-sub { font-size: 11px; color: var(--hint); margin-top: 3px; }
+    .workspace { display: none; background: var(--card); border-radius: 16px; padding: 18px; }
+    .back-btn { background: none; border: none; color: var(--btn); font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 12px; }
+    .field { margin-top: 14px; }
+    label { display: block; font-size: 13px; color: var(--hint); margin-bottom: 6px; }
+    input[type="file"], input[type="password"], input[type="text"], input[type="range"] {
+      width: 100%; padding: 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12);
+      background: var(--bg); color: var(--text); font-size: 14px;
+    }
+    .action-btn {
+      width: 100%; margin-top: 18px; padding: 13px; border: none; border-radius: 12px;
+      background: var(--btn); color: var(--btn-text); font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .status { margin-top: 14px; font-size: 13px; text-align: center; line-height: 1.4; }
+    .badge { display: inline-block; font-size: 10px; padding: 2px 6px; border-radius: 6px; background: rgba(59,130,246,0.2); color: #60a5fa; margin-top: 5px; }
+  </style>
+</head>
+<body>
+
+  <div class="header">
+    <h1>📄 PDF & Image Studio</h1>
+    <p>Converted files seedhe aapki Telegram chat mein aayengi</p>
+  </div>
+
+  <!-- Home Screen: 8 Tools Grid -->
+  <div id="homeGrid" class="grid">
+    <div class="tool-card" onclick="openTool('imgCompress')">
+      <div class="tool-icon">🖼️</div>
+      <div class="tool-title">Image Compressor</div>
+      <div class="tool-sub">JPG/PNG size kam karein</div>
+      <span class="badge">Instant</span>
+    </div>
+
+    <div class="tool-card" onclick="openTool('imgToPdf')">
+      <div class="tool-icon">📑</div>
+      <div class="tool-title">Images to PDF</div>
+      <div class="tool-sub">Photos ko PDF banayein</div>
+      <span class="badge">Instant</span>
+    </div>
+
+    <div class="tool-card" onclick="openTool('pdfToImg')">
+      <div class="tool-icon">📸</div>
+      <div class="tool-title">PDF to Images</div>
+      <div class="tool-sub">Har page ko PNG banayein</div>
+      <span class="badge">Instant</span>
+    </div>
+
+    <div class="tool-card" onclick="openTool('pdfCompress')">
+      <div class="tool-icon">🗜️</div>
+      <div class="tool-title">PDF Compressor</div>
+      <div class="tool-sub">PDF MB size ghatayein</div>
+    </div>
+
+    <div class="tool-card" onclick="openTool('lockPdf')">
+      <div class="tool-icon">🔒</div>
+      <div class="tool-title">Lock PDF</div>
+      <div class="tool-sub">PDF par password lagayein</div>
+    </div>
+
+    <div class="tool-card" onclick="openTool('unlockPdf')">
+      <div class="tool-icon">🔓</div>
+      <div class="tool-title">Unlock PDF</div>
+      <div class="tool-sub">Password hatayein</div>
+    </div>
+
+    <div class="tool-card" onclick="openTool('pdfToWord')">
+      <div class="tool-icon">📝</div>
+      <div class="tool-title">PDF to Word</div>
+      <div class="tool-sub">Editable .docx file</div>
+    </div>
+
+    <div class="tool-card" onclick="openTool('pdfToExcel')">
+      <div class="tool-icon">📊</div>
+      <div class="tool-title">PDF to Excel</div>
+      <div class="tool-sub">Tables ko .xlsx banayein</div>
+    </div>
+  </div>
+
+  <!-- Dynamic Tool Workspace -->
+  <div id="workspace" class="workspace">
+    <button class="back-btn" onclick="goHome()">← Saare Tools Dekhein</button>
+    <h2 id="toolTitle" style="font-size: 18px;"></h2>
+    <p id="toolDesc" style="font-size: 12px; color: var(--hint); margin-top: 4px;"></p>
+
+    <div id="chatIdBox" class="field" style="display:none;">
+      <label>Telegram Chat ID (Browser testing ke liye):</label>
+      <input type="text" id="manualChatId" placeholder="Apna Telegram numeric ID dalein" />
+    </div>
+
+    <div class="field">
+      <label id="fileLabel">File Select Karein:</label>
+      <input type="file" id="fileInput" />
+    </div>
+
+    <div id="extraField" class="field" style="display:none;"></div>
+
+    <button id="processBtn" class="action-btn" onclick="runTool()">Convert & Send to Chat</button>
+    <div id="statusText" class="status"></div>
+  </div>
+
+  <script>
+    // APNA DEPLOYED BACKEND URL YAHAN DALEIN
+    const BACKEND_URL = "https://your-backend.onrender.com";
+
+    const tg = window.Telegram.WebApp;
+    tg.expand();
+    tg.ready();
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    let currentTool = "";
+    const tgUser = tg.initDataUnsafe?.user;
+    if (!tgUser) {
+      document.getElementById("chatIdBox").style.display = "block";
+    }
+
+    function getChatId() {
+      return tgUser ? String(tgUser.id) : document.getElementById("manualChatId").value.trim();
+    }
+
+    const TOOLS = {
+      imgCompress: {
+        title: "🖼️ Image Compressor",
+        desc: "Image ki quality adjust karke size kam karein.",
+        accept: "image/*",
+        multiple: false,
+        extra: `<label>Quality: <span id="qVal">60</span>%</label>
+                <input type="range" id="qualitySlider" min="10" max="90" value="60" oninput="document.getElementById('qVal').innerText=this.value">`
+      },
+      imgToPdf: {
+        title: "📑 Images to PDF",
+        desc: "Ek ya multiple photos ko ek PDF file mein jodein.",
+        accept: "image/jpeg,image/png",
+        multiple: true,
+        extra: ""
+      },
+      pdfToImg: {
+        title: "📸 PDF to Images",
+        desc: "PDF ke pages ko PNG images mein badlein (Max 10 pages).",
+        accept: "application/pdf",
+        multiple: false,
+        extra: ""
+      },
+      pdfCompress: {
+        title: "🗜️ PDF Compressor",
+        desc: "Server par PDF ki images ko compress karke file size kam karein.",
+        accept: "application/pdf",
+        multiple: false,
+        extra: `<label>Compression Quality: <span id="pqVal">55</span>%</label>
+                <input type="range" id="pdfQuality" min="25" max="85" value="55" oninput="document.getElementById('pqVal').innerText=this.value">`
+      },
+      lockPdf: {
+        title: "🔒 Lock PDF",
+        desc: "Apni PDF file ko password se surakshit karein.",
+        accept: "application/pdf",
+        multiple: false,
+        extra: `<label>Naya Password Set Karein:</label>
+                <input type="password" id="pdfPass" placeholder="Password dalein..." />`
+      },
+      unlockPdf: {
+        title: "🔓 Unlock PDF",
+        desc: "Protected PDF ka password daal kar use hamesha ke liye unlock karein.",
+        accept: "application/pdf",
+        multiple: false,
+        extra: `<label>PDF ka Current Password:</label>
+                <input type="password" id="pdfPass" placeholder="Current password dalein..." />`
+      },
+      pdfToWord: {
+        title: "📝 PDF to Word (.docx)",
+        desc: "PDF ko editable Microsoft Word document mein badlein.",
+        accept: "application/pdf",
+        multiple: false,
+        extra: ""
+      },
+      pdfToExcel: {
+        title: "📊 PDF to Excel (.xlsx)",
+        desc: "PDF ke tables ko Excel spreadsheet mein extract karein.",
+        accept: "application/pdf",
+        multiple: false,
+        extra: ""
+      }
+    };
+
+    function openTool(toolKey) {
+      currentTool = toolKey;
+      const cfg = TOOLS[toolKey];
+      document.getElementById("homeGrid").style.display = "none";
+      document.getElementById("workspace").style.display = "block";
+      document.getElementById("toolTitle").innerText = cfg.title;
+      document.getElementById("toolDesc").innerText = cfg.desc;
+      document.getElementById("statusText").innerText = "";
+
+      const fileInput = document.getElementById("fileInput");
+      fileInput.value = "";
+      fileInput.accept = cfg.accept;
+      fileInput.multiple = cfg.multiple;
+
+      const extra = document.getElementById("extraField");
+      if (cfg.extra) {
+        extra.style.display = "block";
+        extra.innerHTML = cfg.extra;
+      } else {
+        extra.style.display = "none";
+        extra.innerHTML = "";
+      }
+    }
+
+    function goHome() {
+      document.getElementById("workspace").style.display = "none";
+      document.getElementById("homeGrid").style.display = "grid";
+    }
+
+    function setStatus(msg, isError = false) {
+      const el = document.getElementById("statusText");
+      el.style.color = isError ? "#f87171" : "#4ade80";
+      el.innerText = msg;
+    }
+
+    async function sendBlobToBot(blob, filename, caption) {
+      const fd = new FormData();
+      fd.append("chat_id", getChatId());
+      fd.append("caption", caption);
+      fd.append("file", blob, filename);
+
+      const res = await fetch(`${BACKEND_URL}/api/send-client-file`, { method: "POST", body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Upload failed");
+    }
+
+    async function runTool() {
+      const chatId = getChatId();
+      if (!chatId) return setStatus("⚠️ Telegram user ID nahi mila!", true);
+
+      const files = document.getElementById("fileInput").files;
+      if (!files.length) return setStatus("⚠️ Pehle koi file select karein!", true);
+
+      const btn = document.getElementById("processBtn");
+      btn.disabled = true;
+      setStatus("⏳ Processing ho rahi hai, kripya intezar karein...");
+
+      try {
+        // --- CLIENT-SIDE TOOLS ---
+        if (currentTool === "imgCompress") {
+          const file = files[0];
+          const quality = parseInt(document.getElementById("qualitySlider").value) / 100;
+          const img = await createImageBitmap(file);
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          canvas.getContext("2d").drawImage(img, 0, 0);
+
+          const blob = await new Promise(r => canvas.toBlob(r, "image/jpeg", quality));
+          const origKb = (file.size / 1024).toFixed(1);
+          const newKb = (blob.size / 1024).toFixed(1);
+          await sendBlobToBot(blob, `compressed_${file.name.split('.')[0]}.jpg`, `🖼️ Compressed Image (${origKb}KB ➡️ ${newKb}KB)`);
+          setStatus(`✅ Done! (${origKb}KB → ${newKb}KB) Telegram chat check karein.`);
+        }
+
+        else if (currentTool === "imgToPdf") {
+          const { PDFDocument } = PDFLib;
+          const pdfDoc = await PDFDocument.create();
+
+          for (const file of files) {
+            const bytes = await file.arrayBuffer();
+            const image = file.type === "image/png" ? await pdfDoc.embedPng(bytes) : await pdfDoc.embedJpg(bytes);
+            const page = pdfDoc.addPage([image.width, image.height]);
+            page.drawImage(image, { x: 0, y: 0, width: image.width, height: image.height });
+          }
+
+          const pdfBytes = await pdfDoc.save();
+          const blob = new Blob([pdfBytes], { type: "application/pdf" });
+          await sendBlobToBot(blob, "images_merged.pdf", `📑 ${files.length} Images merged into PDF`);
+          setStatus("✅ PDF ban gayi aur aapki Telegram chat mein bhej di gayi hai!");
+        }
+
+        else if (currentTool === "pdfToImg") {
+          const bytes = await files[0].arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+          const total = Math.min(pdf.numPages, 10);
+
+          for (let i = 1; i <= total; i++) {
+            setStatus(`⏳ Page ${i}/${total} convert ho raha hai...`);
+            const page = await pdf.getPage(i);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement("canvas");
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+
+            const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+            await sendBlobToBot(blob, `page_${i}.png`, `📸 Page ${i} of ${total}`);
+          }
+          setStatus(`✅ ${total} pages PNG ban kar aapki Telegram chat mein aa gaye hain!`);
+        }
+
+        // --- BACKEND SERVER TOOLS ---
+        else {
+          const fd = new FormData();
+          fd.append("chat_id", chatId);
+          fd.append("file", files[0]);
+
+          let endpoint = "";
+          if (currentTool === "pdfCompress") {
+            endpoint = "/api/compress-pdf";
+            fd.append("quality", document.getElementById("pdfQuality").value);
+          } else if (currentTool === "lockPdf" || currentTool === "unlockPdf") {
+            const pass = document.getElementById("pdfPass").value;
+            if (!pass) throw new Error("Password dalna zaroori hai!");
+            fd.append("password", pass);
+            endpoint = currentTool === "lockPdf" ? "/api/lock-pdf" : "/api/unlock-pdf";
+          } else if (currentTool === "pdfToWord") {
+            endpoint = "/api/pdf-to-word";
+          } else if (currentTool === "pdfToExcel") {
+            endpoint = "/api/pdf-to-excel";
+          }
+
+          const res = await fetch(`${BACKEND_URL}${endpoint}`, { method: "POST", body: fd });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || "Conversion failed");
+          setStatus(`✅ ${data.message}`);
+        }
+      } catch (err) {
+        setStatus(`❌ Error: ${err.message}`, true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+  </script>
+</body>
+    </html>
+      
